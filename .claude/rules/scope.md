@@ -2,6 +2,12 @@
 
 Este é o projeto `censobr_prep_data` — pipeline auxiliar de preparação de dados que produz os parquets consumidos pelo pacote `censobr` (`https://github.com/ipeaGIT/censobr`).
 
+## Workspace policy
+
+Este projeto é **sempre aberto como workspace autônomo** — nunca abrir o diretório pai `censobr_e_prepData/` no VS Code, pois isso mistura este repo com o repo `censobr/` (consumidor) no mesmo painel de Source Control.
+
+O `censobr` é gerenciado em outra janela / outra sessão Claude Code, e mudanças nele vão por PR no GitHub `ipeaGIT/censobr`.
+
 ## Caminhos editáveis
 
 - `D:\Dropbox\Software\R_Packages\censobr_e_prepData\censobr_prep_data\**`
@@ -10,10 +16,10 @@ E **somente** isto. Edits/Writes/NotebookEdits, novos arquivos, deleções, e co
 
 ## Caminhos PROIBIDOS de edição (read-only)
 
-- `D:\Dropbox\Software\R_Packages\censobr_e_prepData\censobr\**`
+- `D:\Dropbox\Software\R_Packages\censobr_e_prepData\censobr\**` — o consumidor `censobr`. Existe no disco como vizinho deste projeto, mas é gerenciado em outra sessão.
 - Qualquer outro caminho fora de `censobr_prep_data/`.
 
-A cópia local de `..\censobr\` existe **apenas para inspeção e referência**. Mudanças no consumidor `censobr` se fazem via PR direto em `ipeaGIT/censobr` no GitHub — nunca a partir desta sessão. A cópia local pode estar desatualizada em relação ao GitHub a qualquer momento; a fonte de verdade é o repositório remoto.
+A cópia local de `..\censobr\` existe apenas como referência. Mudanças no consumidor `censobr` se fazem via PR direto em `ipeaGIT/censobr` no GitHub — nunca a partir desta sessão. A cópia local pode estar desatualizada em relação ao GitHub a qualquer momento; a fonte de verdade é o repositório remoto.
 
 ## O que é permitido em `..\censobr\`
 

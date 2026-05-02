@@ -36,11 +36,15 @@ foreach ($field in $pathFields) {
 
 if ($candidates.Count -eq 0) { exit 0 }
 
-# A path is "in censobr/" if it contains "censobr" as a standalone token
-# (preceded and followed by non-word chars — i.e. /, \, end-of-string, etc.).
-# This catches absolute and relative paths alike. It does NOT match
-# "censobr_prep_data" (underscore is a word char).
-$forbiddenPattern = '(?i)(?<![A-Za-z0-9_])censobr(?![A-Za-z0-9_])'
+# A path is "in censobr/" if it contains "censobr" immediately followed by
+# a path separator (/ or \) or end-of-string, AND not preceded by another
+# word/dash character (which would mean it's part of a longer name like
+# "censobr-prep-data" or "censobr_e_prepData/...-censobr-prep-data" — the
+# latter is the auto-memory dir of THIS very project).
+#
+# Matches:    "../censobr/foo", "..\censobr\foo", "D:/.../censobr"
+# Does NOT:   "censobr_prep_data", "censobr-prep-data", "censobr_e_prepData"
+$forbiddenPattern = '(?i)(?<![A-Za-z0-9_-])censobr(?=[\\/]|$)'
 
 $blocked = $false
 foreach ($p in $candidates) {

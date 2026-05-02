@@ -23,14 +23,14 @@ $cmd = [string]$payload.tool_input.command
 if ([string]::IsNullOrWhiteSpace($cmd)) { exit 0 }
 
 # Does the command reference the forbidden directory?
-# We match "censobr" as a *standalone token* — i.e. surrounded by characters
-# that are not word chars. This catches:
-#   ../censobr/...          (relative)
-#   ..\censobr\...          (Windows backslash)
-#   D:/.../censobr/...      (absolute)
-#   censobr_e_prepData/censobr/...
-# But NOT "censobr_prep_data" (the underscore is a word char in the lookahead).
-$pathPattern = '(?i)(?<![A-Za-z0-9_])censobr(?![A-Za-z0-9_])'
+# We match "censobr" only when followed immediately by a path separator
+# (/ or \) or end-of-token, and NOT preceded by another word/dash char.
+# This rules out names like "censobr_prep_data", "censobr-prep-data", and
+# the auto-memory project dir "...-censobr-e-prepData-censobr-prep-data".
+#
+# Matches:    "../censobr/...", "..\censobr\...", "D:/.../censobr/..."
+# Does NOT:   "censobr_prep_data", "censobr-prep-data", "censobr_e_prepData"
+$pathPattern = '(?i)(?<![A-Za-z0-9_-])censobr(?=[\\/\s"''`]|$)'
 if ($cmd -notmatch $pathPattern) {
     exit 0
 }
