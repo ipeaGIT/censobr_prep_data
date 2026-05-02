@@ -1,0 +1,157 @@
+library(targets)
+library(tarchetypes)
+library(crew)
+
+# cores available
+#coress <- floor(.9 * parallelly::freeCores()[1])
+coress <- 1  # limitado temporariamente para evitar rate-limit do FTP IBGE
+
+
+# RENV -------------------------------------------------------------------------
+
+# # See if the packages are updated:
+# renv::status()
+# # Update packages if needed:
+# renv::snapshot()
+
+# Set target options: ----------------------------------------------------------
+tar_option_set(
+  format = "rds",
+  memory = "transient",
+  garbage_collection = TRUE,
+  controller = crew_controller_local(
+    workers = coress,
+    options_local = crew_options_local(log_directory = "./logs/crew_workers")
+  ),
+  storage = "worker" ,
+  retrieval = "worker",
+  trust_timestamps = TRUE,
+  # error = "null",
+  
+  # Packages essentials --------------------------------------------------------
+  packages = c('arrow',
+               'crew',
+               'data.table',
+               'dplyr',
+               'duckdb',
+               'httr2',
+               'igraph',
+               'rvest',
+               'janitor',
+               'magrittr',
+               'mirai',
+               'openxlsx',
+               'parallelly',
+               'parallel',
+               'pbapply',
+               'piggyback',
+               'purrr',
+               'RCurl',
+               'curl',
+               'readr',
+               'readxl',
+               'stringi',
+               'stringr',
+               'tarchetypes',
+               'tibble',
+               'tidyverse',
+               'utils',
+               'varhandle',
+               'visNetwork',
+               'future',
+               'furrr'
+  )
+)
+
+# invisible(lapply(packages, library, character.only = TRUE))
+
+# tar_make_clustermq() configuration (okay to leave alone):
+# options(clustermq.scheduler = "multisession")
+
+# Run the R scripts in the R/ folder with your custom functions:
+targets::tar_source('./R')
+
+############# The Targets List #########----------------------------------------
+
+# In case of error, run:
+# test_errors <- targets::tar_meta(fields = warnings, complete_only = TRUE)
+
+list(
+  
+  # 01. microdata 1960 ---------------------------------------------------------------
+  
+  # 02. microdata 1970 ---------------------------------------------------------------
+  
+  
+  # 03. microdata 1980 ---------------------------------------------------------------
+  
+  # 04. microdata 1991 ---------------------------------------------------------------
+  
+  # 05. microdata 2010 ---------------------------------------------------------------
+  
+  # 06. microdata 2022 ---------------------------------------------------------------
+  
+  # 07. census tracts 2000 ---------------------------------------------------------------
+
+  # 08. census tracts 2010 ---------------------------------------------------------------
+  
+  # # year input
+  # tar_target(name = years_tracts,
+  #            command = c(2010)),
+  
+  # download
+  tar_target(name = raw_tracts_paths_2010,
+             command = download_tract_2010(2010),
+             format = 'file'
+             ),
+  
+  tar_target(name = table_names_tracts,
+             command = c(
+               "BASICO", 
+               "DOMICILIO", 
+               "DOMICILIORENDA", 
+               "ENTORNO", 
+               "PESSOA", 
+               "PESSOARENDA", 
+               "RESPONSAVEL", 
+               "RESPONSAVELRENDA"
+               )
+             ),
+  
+  # generate national table
+  tar_target(name = clean_tract_table_2010,
+             command = clean_tracts_2010(raw_tracts_paths_2010, table_names_tracts),
+             pattern = map(table_names_tracts)
+             ),
+  
+  # create national files: 1 parquet file for each table
+  # add geography columns and save parquet
+  tar_target(name = output_tracts_paths_2010,
+             command = save_tracts_2010(clean_tract_table_2010),
+             pattern = map(clean_tract_table_2010),
+             format = 'file'
+             )
+  
+  # 09. census tracts 2022 ---------------------------------------------------------------
+  
+  
+  #END. Upload files -----------------------------------------------------------
+  
+  # # all files input
+  # tar_target(name = all_files,
+  #            command = c(
+  #              # clean_tracts_paths
+  #              clean_tracts_paths
+  #            )),
+  # 
+  # tar_target(name = versao_dados,
+  #            command = "v2.0.0"
+  # ),
+  
+  # Upload to GitHub Releases (requires GITHUB_TOKEN in ~/.Renviron)
+  # Sys.setenv(GITHUB_TOKEN = "ghp_...") or add to ~/.Renviron
+  # tar_target(name = upload,
+  #            command = upload_arquivos(files = all_files, versao_dados)
+  # )
+)
+
