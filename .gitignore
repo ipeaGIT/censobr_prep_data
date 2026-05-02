@@ -17,6 +17,10 @@ logs/crew_workers/
 .pdf
 *.pdf
 !reports/*.pdf
+# .claude/ subdirs that should NOT be ignored (versioned for the team):
+#   .claude/settings.json   — shared hooks / permissions
+#   .claude/rules/          — scope rules and policies (incl. scope.md)
+#   .claude/hooks/          — PreToolUse scripts that enforce rules
 .claude/settings.local.json
 .claude/*.lock
 /data-raw/
