@@ -22,16 +22,35 @@ try {
 $cmd = [string]$payload.tool_input.command
 if ([string]::IsNullOrWhiteSpace($cmd)) { exit 0 }
 
-# Does the command reference the forbidden directory?
-# We match "censobr" only when followed immediately by a path separator
-# (/ or \) or end-of-token, and NOT preceded by another word/dash char.
-# This rules out names like "censobr_prep_data", "censobr-prep-data", and
-# the auto-memory project dir "...-censobr-e-prepData-censobr-prep-data".
+# Strip remote-repo references (GitHub URLs, --repo args, gh api endpoints)
+# from the text we'll scan for filesystem paths. These tokens are remote
+# refs, not local paths, so even if they contain "censobr" they cannot be
+# a write target. Removing them prevents false positives like:
+#
+#   mkdir foo && gh release download --repo ipeaGIT/censobr --dir foo
+#   gh api repos/ipeaGIT/censobr/contents/...
+#   curl https://github.com/ipeaGIT/censobr/...
+#
+# Note: this does NOT weaken the write check below — `-X POST/PUT/PATCH/DELETE`
+# against `gh ... censobr` is still flagged via the write-pattern list, and
+# `gh pr/release/issue create|edit|delete|...` are matched on $cmd directly.
+$cmdForPath = $cmd `
+    -replace '--repo[=\s]+\S+', '' `
+    -replace 'https?://github\.com/\S+', '' `
+    -replace 'gh\s+api\s+\S+', ''
+
+# Does the (stripped) command reference the forbidden directory as a
+# filesystem path? We require:
+#   - immediately BEFORE "censobr": a path-like character (`.`, `/`, or `\`)
+#   - immediately AFTER  "censobr": a path separator, whitespace, quote, or EOL
+# Together these isolate filesystem-path references and reject bare uses
+# of the bare word.
 #
 # Matches:    "../censobr/...", "..\censobr\...", "D:/.../censobr/..."
-# Does NOT:   "censobr_prep_data", "censobr-prep-data", "censobr_e_prepData"
-$pathPattern = '(?i)(?<![A-Za-z0-9_-])censobr(?=[\\/\s"''`]|$)'
-if ($cmd -notmatch $pathPattern) {
+# Does NOT:   "censobr_prep_data", "censobr-prep-data", "censobr_e_prepData",
+#             "grep -c censobr", "echo the-censobr-project"
+$pathPattern = '(?i)(?<=[./\\])censobr(?=[\\/\s"''`]|$)'
+if ($cmdForPath -notmatch $pathPattern) {
     exit 0
 }
 

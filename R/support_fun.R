@@ -24,65 +24,173 @@ list_folders <- function(ftp){
 
 
 ###### Download file to tempdir -----------------
+#
+# Smart-skip: if a local file already exists and its size and mtime match the
+# remote (via HEAD request), the download is skipped. Mismatched files are
+# re-downloaded. Each download is retried up to `max_retries` times with
+# exponential backoff.
+#
+# Defaults:
+#   max_active = 3   (parallel; conservative against IBGE FTP rate-limit)
+#   max_retries = 3  (per-URL retry on transient failures)
+#
 download_file_censobr <- function(file_url,
                                 dest_dir = NULL,
                                 showProgress = TRUE,
                                 timeout = 500,
-                                max_active = 5) {
-  
+                                max_active = 3,
+                                max_retries = 3) {
+
   if (is.null(dest_dir)) {
     dest_dir <- tempdir()
   }
-  
+
   if (!dir.exists(dest_dir)) {
     stop("'dest_dir' does not exist")
   }
-  
+
   if (!is.character(file_url) || length(file_url) == 0L) {
     stop("'file_url' must be a non-empty character vector")
   }
-  
+
   dest_files <- file.path(dest_dir, basename(file_url))
-  
-  existing <- file.exists(dest_files)
-  if (any(existing)) {
-    unlink(dest_files[existing])
-  }
-  
-  reqs <- lapply(file_url, function(url) {
+
+  # ---- Step 1: HEAD requests to learn remote size + Last-Modified -----------
+  head_reqs <- lapply(file_url, function(url) {
     httr2::request(url) |>
-      httr2::req_options(
-        timeout = timeout,
-        ssl_verifypeer = 0L
-      )
+      httr2::req_method("HEAD") |>
+      httr2::req_options(timeout = timeout, ssl_verifypeer = 0L)
   })
-  
-  if (length(reqs) == 1L) {
-    httr2::req_perform(reqs[[1]], path = dest_files[[1]])
-    return(dest_files)
-  }
-  
-  resps <- httr2::req_perform_parallel(
-    reqs,
-    paths = dest_files,
-    max_active = max_active,
-    on_error = "continue"
-  )
-  
-  ok <- vapply(
-    resps,
-    function(x) !inherits(x, "httr2_failure"),
-    logical(1)
-  )
-  
-  if (!all(ok)) {
-    warning(
-      "Some downloads failed:\n",
-      paste(file_url[!ok], collapse = "\n")
+
+  head_resps <- if (length(head_reqs) == 1L) {
+    list(tryCatch(httr2::req_perform(head_reqs[[1]]),
+                  error = function(e) structure(list(), class = "httr2_failure")))
+  } else {
+    httr2::req_perform_parallel(
+      head_reqs, max_active = max_active, on_error = "continue"
     )
   }
-  
-  dest_files[ok]
+
+  remote_size <- vapply(head_resps, function(r){
+    if (inherits(r, "httr2_failure")) return(NA_real_)
+    h <- httr2::resp_header(r, "Content-Length")
+    if (is.null(h)) return(NA_real_)
+    suppressWarnings(as.numeric(h))
+  }, numeric(1))
+
+  remote_mtime <- as.POSIXct(NA, tz = "GMT") |> rep(length(head_resps))
+  for (i in seq_along(head_resps)) {
+    r <- head_resps[[i]]
+    if (inherits(r, "httr2_failure")) next
+    h <- httr2::resp_header(r, "Last-Modified")
+    if (is.null(h)) next
+    parsed <- suppressWarnings(
+      as.POSIXct(h, format = "%a, %d %b %Y %H:%M:%S", tz = "GMT")
+    )
+    if (!is.na(parsed)) remote_mtime[i] <- parsed
+  }
+
+  # ---- Step 2: decide which files need (re-)download ------------------------
+  needs_download <- vapply(seq_along(file_url), function(i){
+    if (!file.exists(dest_files[i])) return(TRUE)
+    if (is.na(remote_size[i])) return(TRUE)   # HEAD failed; safer to redownload
+
+    local_info <- file.info(dest_files[i])
+    if (!isTRUE(local_info$size == remote_size[i])) return(TRUE)
+
+    # If we have a remote mtime, require a tight match (within 2s tolerance,
+    # since mtime granularity differs between filesystems).
+    if (!is.na(remote_mtime[i])) {
+      local_m <- as.POSIXct(local_info$mtime, tz = "GMT")
+      delta_s <- abs(as.numeric(difftime(local_m, remote_mtime[i], units = "secs")))
+      if (delta_s > 2) return(TRUE)
+    }
+
+    FALSE  # size (and mtime, if known) match: keep local file
+  }, logical(1))
+
+  to_download <- which(needs_download)
+  n_skip      <- length(file_url) - length(to_download)
+
+  if (length(to_download) == 0L) {
+    message("download_file_censobr: all ", length(file_url),
+            " files already match remote (size+mtime); skipping.")
+    return(dest_files)
+  }
+  if (n_skip > 0L) {
+    message("download_file_censobr: skipping ", n_skip,
+            " up-to-date file(s); downloading ",
+            length(to_download), " new/changed.")
+  }
+
+  # delete partials / stale files before downloading
+  for (i in to_download) {
+    if (file.exists(dest_files[i])) unlink(dest_files[i])
+  }
+
+  # ---- Step 3: download with per-URL retry ----------------------------------
+  remaining     <- to_download
+  attempt       <- 1L
+
+  while (length(remaining) > 0L && attempt <= max_retries) {
+    if (attempt > 1L) {
+      message("  retry ", attempt, "/", max_retries,
+              " for ", length(remaining), " file(s)")
+    }
+
+    urls_now  <- file_url[remaining]
+    paths_now <- dest_files[remaining]
+
+    reqs <- lapply(urls_now, function(url){
+      httr2::request(url) |>
+        httr2::req_options(timeout = timeout, ssl_verifypeer = 0L)
+    })
+
+    if (length(reqs) == 1L) {
+      ok <- tryCatch({
+        httr2::req_perform(reqs[[1]], path = paths_now[1])
+        TRUE
+      }, error = function(e) FALSE)
+      ok_vec <- ok
+    } else {
+      resps <- httr2::req_perform_parallel(
+        reqs, paths = paths_now,
+        max_active = max_active, on_error = "continue"
+      )
+      ok_vec <- vapply(resps,
+                       function(x) !inherits(x, "httr2_failure"),
+                       logical(1))
+    }
+
+    # Set local mtime to remote Last-Modified for files that succeeded -- so
+    # the next run's HEAD-based skip check can recognize them as up-to-date.
+    for (j in which(ok_vec)) {
+      idx <- remaining[j]
+      if (!is.na(remote_mtime[idx])) {
+        try(Sys.setFileTime(dest_files[idx], remote_mtime[idx]), silent = TRUE)
+      }
+    }
+
+    failed_j <- which(!ok_vec)
+    if (length(failed_j) == 0L) break
+    # clean partials before retry
+    for (j in failed_j) {
+      if (file.exists(paths_now[j])) unlink(paths_now[j])
+    }
+    remaining <- remaining[failed_j]
+    attempt   <- attempt + 1L
+    if (length(remaining) > 0L && attempt <= max_retries) {
+      Sys.sleep(2 ^ (attempt - 2L))  # backoff: 1s, 2s, 4s
+    }
+  }
+
+  if (length(remaining) > 0L) {
+    warning("download_file_censobr: after ", max_retries, " attempts, ",
+            length(remaining), " file(s) still failed:\n",
+            paste(file_url[remaining], collapse = "\n"))
+  }
+
+  return(dest_files[file.exists(dest_files)])
 }
 
 # download_file_censobr <- function(file_url,

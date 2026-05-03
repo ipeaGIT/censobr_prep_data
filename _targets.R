@@ -19,8 +19,15 @@ tar_option_set(
   format = "rds",
   memory = "transient",
   garbage_collection = TRUE,
+  # crew_controller_local on Windows can fail to respawn workers between tasks
+  # ("callr subprocess failed: could not start R") after default seconds_idle=300.
+  # Keeping the worker alive for the whole pipeline (seconds_idle = Inf) avoids
+  # repeated callr respawns, which is the root cause of the crash.
+  # See deferred_priorities for follow-up investigation. With coress = 1 this
+  # still serializes targets; we lose nothing.
   controller = crew_controller_local(
     workers = coress,
+    seconds_idle = Inf,
     options_local = crew_options_local(log_directory = "./logs/crew_workers")
   ),
   storage = "worker" ,
@@ -130,9 +137,39 @@ list(
              command = save_tracts_2010(clean_tract_table_2010),
              pattern = map(clean_tract_table_2010),
              format = 'file'
-             )
-  
+             ),
+
   # 09. census tracts 2022 ---------------------------------------------------------------
+
+  # download (also unzips). Returns paths to all extracted CSVs.
+  tar_target(name = raw_tracts_paths_2022,
+             command = download_tract_2022(),
+             format = 'file'
+             ),
+
+  tar_target(name = table_names_tracts_2022,
+             command = c("Basico",
+                         "Domicilio",
+                         "Pessoas",
+                         "ResponsavelRenda",
+                         "Indigenas",
+                         "Quilombolas",
+                         "Entorno",
+                         "Obitos")
+             ),
+
+  # branch per theme: read CSVs, recode, join multi-file themes, attach geo
+  tar_target(name = clean_tract_table_2022,
+             command = clean_tracts_2022(raw_tracts_paths_2022, table_names_tracts_2022),
+             pattern = map(table_names_tracts_2022)
+             ),
+
+  # branch per theme: cast code_* to numeric (v0.6.0 convention) + save parquet
+  tar_target(name = output_tracts_paths_2022,
+             command = save_tracts_2022(clean_tract_table_2022),
+             pattern = map(clean_tract_table_2022),
+             format = 'file'
+             )
   
   
   #END. Upload files -----------------------------------------------------------

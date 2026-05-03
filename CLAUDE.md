@@ -24,6 +24,41 @@ If a hook blocks an action, stop and explain to the user what would need to chan
 
 Data-preparation companion to the [`censobr`](https://github.com/ipeaGIT/censobr) R package. It downloads raw Brazilian Census files from the IBGE FTP, parses/cleans them, and writes compressed parquet files that are uploaded as assets to GitHub Releases on `ipeaGIT/censobr`. End users never run this repo — they consume the published parquet files via the `censobr` package. The README is intentionally empty.
 
+**Project objective:** the deliverable is the **`targets` pipeline itself, 100% reproducible**. Producing any specific `censobr` release (v0.5.0, v0.6.0, etc.) is a downstream concern handled in a separate session against the `ipeaGIT/censobr` repo.
+
+## Data domain — two types, two axes
+
+The pipeline produces parquets of two distinct kinds, organized along two independent axes (type × census edition):
+
+**Type 1 — Sample microdata** (registros em nível de indivíduo/domicílio, da amostra do censo):
+
+| Edition | Raw source | Download stage |
+|---|---|---|
+| 1960 | Personal compilation by the maintainer (Rogério), assembled outside this project from two complementary sources | **No download stage, ever** — `censobr` consumes the semi-prepared input as given |
+| 1970, 1980, 1991, 2000, 2010 | IBGE FTP — `https://ftp.ibge.gov.br/Censos/` | Short-term: scripts assume local files (download skipped). Long-term: add `download_microdata_<year>()` targets reading from FTP |
+| 2022 | IBGE FTP (expected) — IBGE may release ~Jul/2026 | Awaiting publication |
+
+**Type 2 — Aggregates by census tract** (registros em nível de setor censitário; somas, proporções e médias do **universo** do censo, agregadas espacialmente — não da amostra):
+
+| Edition | Status |
+|---|---|
+| 2000 | Legacy script in `R_ainda_sem_targets/census_tracts_aggreg_2000.R` — pending port |
+| 2010 | **Wired** in `R/census_tracts_2010.R` + `# 08.` block in `_targets.R`. Canonical template for porting other years |
+| 2022 | Legacy scripts `census_tracts_aggreg_2022*.R` — pending port |
+
+No tract aggregates exist for editions before 2000.
+
+## Pipeline stage vocabulary
+
+The canonical sequence for processing an (edition × type) flow has **four stages**. Use these names consistently in code, plans, and discussion:
+
+1. **download** — fetch raw files from the IBGE FTP. Skipped for 1960 (no FTP source) and for short-term microdata work (assumes local input).
+2. **abrir** (open/read) — parse raw files (fixed-width `.txt` for microdata; `.xls`/`.zip` for tracts) into R/Arrow structures.
+3. **recodificar** (recode) — transform **values within columns**: e.g., `1/2` → `"Masculino"/"Feminino"`, regroup race/color categories, harmonize education codes across editions.
+4. **padronizar** (standardize) — bring the **structure and metadata** into the `censobr` standard: rename columns to `censobr` convention, apply `arrow::schema()` types, attach geography columns (`code_muni`, `code_state`, `name_state`, `code_region`), write parquet via `write_censobr_parquet()` (zstd-22).
+
+Avoid the generic term "preparar" — too vague, since every stage prepares something. "Padronizar" is preferred because there is an external specification (the `censobr` consumer) that the output must conform to.
+
 ## Pipeline orchestration (`_targets.R`)
 
 The pipeline uses [`targets`](https://books.ropensci.org/targets/) + `tarchetypes` + `crew`. Functions in `R/` are auto-sourced via `targets::tar_source('./R')`. Common commands:
@@ -67,8 +102,32 @@ Centralized helpers used throughout the pipeline. Reuse before reinventing:
 
 - **2010 tracts RS**: `RS_20231030.zip` is explicitly deleted in favor of `RS_20241211.zip` (see `census_tracts_2010.R:48`).
 - **`ÿ` character corruption** in some 2010 xls files (e.g. `Pessoa07_CE.xls`, `Entorno05_RO.xls`) — currently stripped to empty string.
-- **Goiás 2010 `Pessoa02`** has malformed `V01`–`V09` column names (vs. `V001`–`V009` elsewhere); the fix is currently commented out in `clean_tracts_2010` — re-enable if processing GO Pessoa data.
+- **Goiás 2010 `Pessoa02`** has malformed `V01`–`V09` column names (vs. `V001`–`V009` elsewhere); the fix is currently commented out in `clean_tracts_2010` — re-enable if processing GO Pessoa data (issue #68).
 - `code_weighting` for 2010 tracts is joined in from `geobr::read_census_tract(year = 2010)`.
+
+## Open data bugs (must fix in this pipeline)
+
+5 issues open in `ipeaGIT/censobr/issues`, all in **2010 tracts** (the only block currently wired). Catalog and remediation plan in memory entry [`project_open_data_bugs.md`](C:/Users/antro/.claude/projects/d--Dropbox-Software-R-Packages-censobr-e-prepData-censobr-prep-data/memory/project_open_data_bugs.md). Phase 0.3 of the plan tackles these before any other porting.
+
+Highlights: #73 (X→0 instead of NA, BLOCKER); #68 (GO Pessoa02 all NA, BLOCKER, fix is commented out); #70 (Pessoa02 truncated at V170, BLOCKER); #71 (V009 income variable in Basico full of NAs in many states — user-reported workaround was switching from XLS to direct-FTP-CSV read, BLOCKER); #75 (UF/region name inconsistencies in Basico, MAJOR).
+
+## Type convention v0.6.0 — `code_*` as numeric
+
+Decided 2026-05-03 (memory entry [`project_conventions_v0_6_0.md`](C:/Users/antro/.claude/projects/d--Dropbox-Software-R-Packages-censobr-e-prepData-censobr-prep-data/memory/project_conventions_v0_6_0.md)):
+
+In every v0.6.0+ parquet produced by this pipeline, all columns whose name starts with `code_` are typed as `numeric` (R double / Arrow float64). Includes `code_tract`, `code_muni`, `code_state`, `code_region`, `code_weighting`, `code_meso`, `code_micro`, etc.
+
+This is an intentional break from v0.5.0 (which had `code_tract` as string and the rest as int32). Apply via `mutate(across(starts_with("code_"), as.numeric))` at the end of the standardize step, before `write_censobr_parquet()`. Document in the consumer's NEWS when v0.6.0 ships — users comparing e.g. `code_state == "11"` (string) need to switch to `code_state == 11`.
+
+## Validation reference
+
+There is **no `dev` branch** on `ipeaGIT/censobr` (verified 2026-05-02 — only `main` and `gh-pages`; local Dropbox-synced clones may show stale `origin/dev` ref). The published reference is **v0.5.0** (Jun/2025, 38 parquets). v0.5.0 carries the bugs above — treat it as historical baseline to measure intentional divergence after fixes, not as gold standard.
+
+The pre-release **v0.6.0** (Sep/2025, 8 parquets) is the output of an earlier version of `R/census_tracts_2010.R` (not the current `main` HEAD). Useful as a checkpoint reference but should not be conflated with v0.5.0.
+
+The **canonical column-by-column specification** for 2010/2022 tract parquets is the dictionary CSV from Pedro H. G. F. Souza's private repo, frozen at [`references/phgfsouza_census_tracts/`](references/phgfsouza_census_tracts/) (commit `f895871`, 2026-04-30). Read this in any port that touches setores 2010/2022 to validate output column-by-column. Coverage: 8 parquets for 2010, 9 parquets for 2022. Does NOT cover microdata or pre-2010.
+
+Phase-0 baseline evidence for 2010 tracts bugs is in [`.claude/plans/baseline-2010-tracts.md`](.claude/plans/baseline-2010-tracts.md) — read this before working Phase 0.3.
 
 ## Publishing artifacts
 
