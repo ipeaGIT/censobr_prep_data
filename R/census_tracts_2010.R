@@ -252,11 +252,11 @@ save_tracts_2010 <- function(br_df){
   tbl <- br_df$table_name[1]
   message(tbl)
 
-  # code_weighting (área de ponderação) é stub NA em v0.6.0 — geobr (>=1.10) não
-  # expõe mais essa coluna pra 2010. Restaurar via Documentacao.zip do IBGE é
-  # prioridade adiada; stub mantém a coluna pra add_geography_cols_tracts não
-  # falhar no relocate.
-  if(!"code_weighting" %in% names(br_df)) br_df$code_weighting <- NA_character_
+  # code_weighting (área de ponderação): crosswalk IBGE em Documentacao_microdados_2010.zip.
+  # geobr (>=1.10) deixou de expor essa coluna; lemos da fonte canônica.
+  ap <- get_areas_ponderacao_2010()
+  setDT(br_df)
+  br_df <- merge(br_df, ap, by = "code_tract", all.x = TRUE, sort = FALSE)
 
   br_df <- add_geography_cols_tracts(br_df, year = 2010)
 

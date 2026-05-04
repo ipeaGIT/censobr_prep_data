@@ -739,6 +739,47 @@ pick_latest_per_uf <- function(zip_files){
 }
 
 
+# Crosswalk code_tract -> code_weighting (areas de ponderacao 2010), distribuido
+# pelo IBGE em Documentacao_microdados_2010.zip. Eh estrato de amostra do censo
+# 2010: cada area agrupa N setores. Ate geobr 1.10 essa info vinha de
+# read_census_tract(); foi removida; agora puxamos da fonte canonica IBGE.
+# Retorna data.table(code_tract numeric, code_weighting numeric).
+get_areas_ponderacao_2010 <- function(){
+
+  zip_path <- "./data_raw/tracts/2010/Documentacao_microdados_2010.zip"
+
+  if(!file.exists(zip_path)){
+    download_file_censobr(
+      file_url = "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2010/Resultados_Gerais_da_Amostra/Microdados/Documentacao.zip",
+      dest_dir = dirname(zip_path)
+    )
+    src <- file.path(dirname(zip_path), "Documentacao.zip")
+    if(file.exists(src)) file.rename(src, zip_path)
+  }
+
+  # R unzip nao le filenames com bytes nao-ASCII; fallback system unzip.
+  out_dir <- file.path(tempdir(), "ap_2010")
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  res <- system2("unzip", c("-o", "-q", shQuote(zip_path), "-d", shQuote(out_dir)))
+  if(res != 0) stop("system unzip failed for ", basename(zip_path))
+
+  txt_files <- list.files(out_dir, pattern = "\\.txt$", recursive = TRUE, full.names = TRUE)
+  txt_path  <- txt_files[grepl("Composi.+Pondera", txt_files)]
+  if(length(txt_path) != 1) stop("Composicao das Areas de Ponderacao.txt nao encontrado")
+
+  # UTF-16LE com BOM, separador TAB. Header: "Area de ponderacao\tSetor".
+  # Mantem character: conversao pra numeric acontece downstream em code_cols_to_numeric.
+  ap <- read.table(txt_path, sep = "\t", header = TRUE, fileEncoding = "UTF-16LE",
+                   colClasses = "character", quote = "", check.names = FALSE)
+  data.table::setDT(ap)
+  data.table::setnames(ap, c("code_weighting", "code_tract"))
+
+  unlink(out_dir, recursive = TRUE)
+
+  ap[, .(code_tract, code_weighting)]
+}
+
+
 # detect table from file name
 detect_2010_table_name <- function(file_path){
   
