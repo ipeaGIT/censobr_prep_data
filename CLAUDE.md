@@ -17,13 +17,14 @@ All rules live in [.claude/rules/](.claude/rules/) and are obligatory:
 - **[plan-first-workflow.md](.claude/rules/plan-first-workflow.md)** — non-trivial tasks require a written plan saved to disk before any code is written.
 - **[minimal-changes.md](.claude/rules/minimal-changes.md)** — surgical edits only; protected-function list; no opportunistic refactor.
 - **[test-first-protocol.md](.claude/rules/test-first-protocol.md)** — validate on 1 small UF (RR/AC) before processing 27 states; investigation loop until "absolute certainty".
-- **[memory-discipline.md](.claude/rules/memory-discipline.md)** — `data.table` default + `furrr` workers ≤ 4 + `gc/rm` discipline + `arrow` fallback. User-style code (procedural, no `.dot_prefixed` helpers, narrative comments). `censobr` naming convention (`code_*`, `name_*`, V cols preserved with theme prefix). Triggered by 2026-05-03 OOM crash.
+- **[memory-discipline.md](.claude/rules/memory-discipline.md)** — performance/memória: XLS-first (CSV fallback), `data.table` default, `furrr` workers ≤ 4, `gc/rm` rigor, `arrow` como fallback. Triggered by 2026-05-03 OOM crash.
+- **[code-style.md](.claude/rules/code-style.md)** — escrita de código: estilo procedural do usuário (sem helpers `.dot_prefixed`, comentários narrativos curtos, sem defensividade redundante), nomeação `censobr` canônica (`code_*`, `name_*`, V cols com prefixo de tema), adaptação a `targets`.
 
 If a hook blocks an action, stop and explain to the user what would need to change — do not try to work around it.
 
 ## Memory & style discipline (sempre em contexto)
 
-Regra completa em [.claude/rules/memory-discipline.md](.claude/rules/memory-discipline.md). Os bullets abaixo são críticos para **todo** código R deste projeto e ficam em contexto a cada turno para evitar drift. Triggered pelo crash OOM de 2026-05-03 e por feedback explícito do usuário sobre estilo verboso/defensivo do AI.
+Duas regras complementares: [`memory-discipline.md`](.claude/rules/memory-discipline.md) (performance) e [`code-style.md`](.claude/rules/code-style.md) (escrita + nomeação). Os bullets abaixo são críticos para **todo** código R deste projeto e ficam em contexto a cada turno para evitar drift. Triggered pelo crash OOM de 2026-05-03 e por feedback explícito do usuário sobre estilo verboso/defensivo do AI.
 
 **Fonte de dados (XLS é primário):**
 - IBGE distribui o mesmo conteúdo em XLS e CSV. **Use XLS por default** — `readxl::read_excel(col_types = "text")`.
