@@ -68,21 +68,24 @@ download_tract_2010 <- function(year, overwrite = FALSE){ # year = 2010
   # this is necessary to enforce consistency of file names across states and tables 
   rename_files_toupper_lower_ext(unzipped_files)
   
-  # return file paths
+  # retorna XLS (não CSV). Os CSVs do IBGE têm múltiplos problemas:
+  # ENTORNO_*.csv: Cod_setor em notação científica (UFs grandes, perde precisão).
+  # PESSOA*_SP2.csv, RESPONSAVEL*_SP2.csv, PESSOA02_AC.csv: separador "," + quotes
+  # duplicados (formato malformado). XLS preserva tudo. readxl + col_types="text"
+  # mantém "X" como texto literal — issues #71+#73 não regridem porque o all-NA-drop
+  # não dispara em strings "X" (só em colunas genuinamente NA).
   raw_file_paths <- list.files(
-    path = dest_dir, 
-    pattern = ".xls", 
-    all.files = T, 
-    full.names = T, 
+    path = dest_dir,
+    pattern = "\\.xls$",
+    ignore.case = TRUE,
+    all.files = T,
+    full.names = T,
     recursive = T
     )
-  
-  # ignore documentation files
+
   raw_file_paths <- raw_file_paths[ ! raw_file_paths %like% "Descri|.zip"]
-  
   raw_file_paths <- unique(raw_file_paths)
-  
-  return(raw_file_paths)
+  raw_file_paths
 }
 
 
@@ -116,51 +119,31 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
     # # determine encoding
     # enc <- ifelse(st=='_ES', 'UTF-8', 'Latin-1')
     
-    # read data
-    temp_df <- readxl::read_excel(f, col_types = "text")
-    
-    # # fix column names of table Pessoa02 of Goias. Issue https://github.com/ipeaGIT/censobr/issues/68
-    # if (tabl=="Pessoa") {
-    #   last6 <- substring(f, nchar(f) - 5)
-    #   uf <- substring(last6, 1,2)
-    #   
-    #   if( uf=="GO"){
-    #     names(temp_df) <- sub("^V(\\d{2})$", "V0\\1", names(temp_df))
-    #   }
-    # }
-    
-    
-    # determine columns with 100% of NA and drop them
-    data.table::setDT(temp_df)
-    all_NA_cols <- sapply(temp_df, function(x)all(is.na(x)))
-    all_NA_cols <- names(all_NA_cols[all_NA_cols > 0])
-    if(length(all_NA_cols)>0){ temp_df[, {{all_NA_cols}} := NULL] }
-    
-    # # all columns to character
-    # for(col in names(temp_df)) {
-    #   set(temp_df, j = col, value = as.character(temp_df[[col]]))
-    # }
-    
-    # detect error with character 'ÿ' and replace observations with NA
-    # Pessoa07_CE.xls
-    # Entorno05_RO.xls
-    row_pos <- temp_df |> map(~str_detect(.x,'ÿ')) |> reduce(`|`)
-    n_rows <- sum(row_pos, na.rm = T)
-    
-    if (n_rows > 0){
-      message(paste0('ÿÿÿÿÿÿ detected in '), f)
-      # stop('error')
-      ## replace all with empty space
-      temp_df <- temp_df |> mutate_all(funs(str_replace_all(., "ÿ", "")))
+    # XLS preserva "X" como texto literal, Cod_setor full precision, e nomes
+    # de colunas íntegros — independente dos quirks de CSV-export do IBGE.
+    temp_df <- as.data.table(readxl::read_excel(f, col_types = "text"))
+
+    # Algumas UFs vêm com nomes duplicados (DOMICILIO02_RO 107 dups; ENTORNO02_RO).
+    names(temp_df) <- make.unique(names(temp_df), sep = "_")
+
+    # Issue #68: Pessoa02 de GO e SP tem V01..V09 em vez de V001..V009.
+    uf <- str_remove_all(str_extract(basename(f), "_[A-Z]{2}[0-9]?\\."), "[_.]")
+    if(uf %in% c("GO", "SP1", "SP2")){
+      names(temp_df) <- sub("^V(\\d{2})$", "V0\\1", names(temp_df))
     }
-    
-    #   # replace all with empty space
-    #   temp_df2 <- temp_df |> mutate_all(funs(str_replace_all(., "ÿ", "")))
-    #
-    #   # temp_df2[24, c('V032')] |> nchar()
-    #
-    # # replace entire cell with NA
-    #   temp_df[apply(temp_df, 2, function(i) grepl('ÿ', i))] <- NA
+
+    # dropar colunas 100% NA
+    setDT(temp_df)
+    all_NA <- names(temp_df)[sapply(temp_df, function(x) all(is.na(x)))]
+    if(length(all_NA)) temp_df[, (all_NA) := NULL]
+
+    # ÿ aparece em alguns arquivos (Pessoa07_CE, Entorno05_RO) — striped.
+    has_y <- any(vapply(temp_df, function(col) any(grepl("ÿ", col, fixed = TRUE), na.rm = TRUE), logical(1)))
+    if(has_y){
+      message("ÿ detected in ", f)
+      for(col in names(temp_df))
+        set(temp_df, j = col, value = gsub("ÿ", "", temp_df[[col]], fixed = TRUE))
+    }
     
     
     # get root of file name
@@ -173,80 +156,67 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
     temp_df[, code_tract := as.character(code_tract)]
     temp_df[, code_muni := substr(code_tract, 1, 7)]
     data.table::setcolorder(temp_df, c('code_muni', 'code_tract'))
+
+    # IBGE às vezes inclui linhas-resumo sem código de setor. Filtrar antes do
+    # merge — data.table casa NA==NA no join (gera Cartesian); dplyr::left_join
+    # antigo silenciosamente dropava NAs.
+    temp_df <- temp_df[!is.na(code_tract)]
     
-    # detect table from file name
+    # prefixa V cols com nome do sub-arquivo (pessoa01_, domicilio02_, etc.)
     tabl <- detect_2010_table_name(f)
-    
-    if( tabl == 'PESSOA' | tabl == 'DOMICILIO' | tabl == 'RESPONSAVEL' | tabl == 'ENTORNO'){
+    if(tabl %in% c("PESSOA", "DOMICILIO", "RESPONSAVEL", "ENTORNO")){
       cols_to_rename <- names(temp_df)[3:ncol(temp_df)]
-      names(temp_df)[3:ncol(temp_df)] <- paste0(root_name,'_', cols_to_rename)
+      names(temp_df)[3:ncol(temp_df)] <- paste0(root_name, "_", cols_to_rename)
     }
-    
-    temp_df$table_name <- tabl
-      
-    return(temp_df)
+
+    # table_name é re-adicionado em clean_tracts_2010 após rbindlist; mantê-lo
+    # aqui faz merge.data.table acumular table_name.x/.y entre sub-tabelas.
+    temp_df
   }
   
-  # save one file per state / cbind when there're more then one file per in the same state
+  # processa todos os arquivos de uma UF; em temas com 2+ sub-tabelas, faz
+  # join iterativo data.table consumindo a fila pra liberar memória.
   prep_state <- function(abbrev, temp_files){
-    
-    # abbrev = "SP_Exceto_Capital"   abbrev = "GO"
     message(abbrev)
-    
-    # select files from uf
-    uf_files <- temp_files[temp_files %like% paste0(abbrev,"/EXCEL/")]
-    
-    # read all tables into a list
-    df_list <- lapply(X=uf_files, FUN=read_single_file_tract_2010)
-    
-    # left join when there are two or more files for a given state
-    if (length(df_list)>1) {
-      temp_uf <- purrr::reduce(.x = df_list, .f = dplyr::left_join, by=c('code_muni', 'code_tract'))
+
+    uf_files <- temp_files[temp_files %like% paste0(abbrev, "/EXCEL/")]
+    df_list  <- lapply(uf_files, read_single_file_tract_2010)
+
+    temp_uf <- df_list[[1]]
+    df_list[[1]] <- NULL
+    while(length(df_list) > 0){
+      temp_uf <- merge(temp_uf, df_list[[1]],
+                       by = c("code_muni", "code_tract"),
+                       all.x = TRUE, sort = FALSE)
+      df_list[[1]] <- NULL
+      gc(verbose = FALSE)
     }
-    if (length(df_list)==1) {
-      temp_uf <- rbindlist(df_list, fill=TRUE)
-    }
-    
-    gc(T)
-    return(temp_uf)
-    # fname <- paste0(tabl,'_tracts_', abbrev, '.parquet') |> tolower()
-    # arrow::write_parquet(temp_uf, paste0('./data/tracts/2010/', fname))
-    
+
+    rm(df_list); gc(verbose = FALSE)
+    temp_uf
   }
-  
-  
-  # parallel
-  # 666666666666 set number of workers as a global option in targets
-  future::plan(future::multisession, workers = 8)
-  
-  # tbl_name = "BASICO"   tbl_name = "DOMICILIO"
-  
-  temp_files <- raw_file_paths[ raw_file_paths %like% tbl_name]
-  
-  if (tbl_name %in% c('PESSOA', 'DOMICILIO', 'RESPONSAVEL','ENTORNO')) {
-    root_names <- basename(temp_files)
-    temp_files <- temp_files[ str_detect(root_names, "([:digit:][:digit:])") ]
-    }
-    
-  # fix states to account for two SP files
-  all_states <- UF_SIGLAS[!grepl("SP", UF_SIGLAS)]
-  all_states <- c(all_states, 'SP_Capital', 'SP_Exceto_Capital')
-  all_states
-  
-  # process each state
-  # pblapply(X = all_states, FUN = prep_state, tabl = t)
-  ufs_list <- furrr::future_map(
-    .x = all_states,
-    .f = prep_state,
-    temp_files = temp_files,
-    .progress = T
-  )
-    
-  br_df <- data.table::rbindlist(ufs_list)
-  
-  return(br_df)
-  
+
+
+  # workers ≤ 4 por regra (memory-discipline). Mais que isso saturou RAM em ENTORNO.
+  future::plan(future::multisession, workers = 4)
+
+  temp_files <- raw_file_paths[raw_file_paths %like% tbl_name]
+  if(tbl_name %in% c("PESSOA", "DOMICILIO", "RESPONSAVEL", "ENTORNO")){
+    temp_files <- temp_files[str_detect(basename(temp_files), "[0-9]{2}")]
   }
+
+  # SP vem em duas peças (SP_Capital + SP_Exceto_Capital); 26 UFs comuns + 2 SP.
+  all_states <- c(UF_SIGLAS[!grepl("SP", UF_SIGLAS)], "SP_Capital", "SP_Exceto_Capital")
+
+  ufs_list <- furrr::future_map(all_states, prep_state,
+                                temp_files = temp_files, .progress = TRUE)
+
+  br_df <- rbindlist(ufs_list, fill = TRUE, use.names = TRUE)
+  rm(ufs_list); gc(verbose = FALSE)
+
+  br_df$table_name <- tbl_name
+  br_df
+}
 
 
 
@@ -254,48 +224,27 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
 # generate a national df with all states for a given table
 # clean_tract_table_2010 <- tar_read(clean_tract_table_2010)
 save_tracts_2010 <- function(br_df){
-  
+
   tbl <- br_df$table_name[1]
-  
   message(tbl)
-  
-  # download info about areas de ponderacao
-  cross <- geobr::read_census_tract(
-    code_tract = "all", 
-    year = 2010, 
-    simplified = TRUE
-    ) |> 
-    sf::st_drop_geometry() |> 
-    dplyr::select(code_tract, code_weighting)
-  
-  #' 
-  #' 
-  #' temp_dir <- tempdir()
-  #' download_file_censobr(
-  #'   file_url = "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2010/Resultados_Gerais_da_Amostra/Microdados/Documentacao.zip", 
-  #'   dest_dir = temp_dir
-  #'   )
-  #' 
-  #' ap_files <- unzip_censobr(zip_dir = temp_dir)
-  #' 
-  #' ap_files[ap_files %like% "composi"]
-  #' ap_files[ap_files %like% "composicao_areas_ponderacao_2010.txt"]
-  #' 
-  #' # add code_weighting. You need to manually:
-  #' #' - downloaded file https://ftp.ibge.gov.br/Censos/Censo_Demografico_2010/Resultados_Gerais_da_Amostra/Microdados/Documentacao.zip
-  #' #' - unzip it
-  #' #' - change column names and change encoding
-  #' 
-  #' cross <- data.table::fread("R:/Dropbox/git/censobr/data_prep/data_raw/tracts/2010/composicao_areas_ponderacao_2010.txt")
-  #' 
-  #' cross <- data.table::fread('./data_raw/tracts/2010/composicao_areas_ponderacao_2010.txt', colClasses = 'character',encoding = 'UTF-8')
-  #' AT <- left_join(AT, cross, by = 'code_tract')
-  
-  # add geography variables
+
+  # code_weighting (área de ponderação) é stub NA em v0.6.0 — geobr (>=1.10) não
+  # expõe mais essa coluna pra 2010. Restaurar via Documentacao.zip do IBGE é
+  # prioridade adiada; stub mantém a coluna pra add_geography_cols_tracts não
+  # falhar no relocate.
+  if(!"code_weighting" %in% names(br_df)) br_df$code_weighting <- NA_character_
+
   br_df <- add_geography_cols_tracts(br_df, year = 2010)
-  
+
+  # Padroniza nomes de UF/região (issue #75). add_state_info reescreve code_state
+  # numeric + refresca name_state/abbrev_state; add_region_info deriva code_region.
+  br_df <- add_state_info(br_df, column = "code_state")
+  br_df <- add_region_info(br_df, column = "code_state")
+
+  AT <- br_df
+
   # rename columns
-  if(tbl == 'Basico_'){
+  if(tbl == 'BASICO'){
     
     options(scipen = 999)
     
@@ -328,9 +277,10 @@ save_tracts_2010 <- function(br_df){
                         # , tipo_setor = Tipo_setor
     )
     
+    # cols IBGE de UF/região foram substituídas por add_state_info/add_region_info.
     AT <- AT |>
-      select( -c("Cod_Grandes Regiões", "Nome_Grande_Regiao", "Cod_UF",
-                 "Nome_da_UF", "Cod_municipio"))
+      select(-any_of(c("Cod_Grandes Regiões", "Nome_Grande_Regiao",
+                       "Cod_UF", "Nome_da_UF", "Cod_municipio")))
     
     ## reoder columns
     AT <- relocate(AT, c(code_tract, code_weighting, code_muni, name_muni, code_state,
@@ -347,7 +297,7 @@ save_tracts_2010 <- function(br_df){
   all_cols <- names(AT)
   old_names <- all_cols[str_detect(all_cols, 'Situacao_setor')]
   
-  if(tbl == 'Entorno_'){ AT <- select(AT, -c(entorno05_V1005)) }
+  if(tbl == 'ENTORNO'){ AT <- select(AT, -c(entorno05_V1005)) }
   
   AT <- rename_with(AT,
                     ~gsub('Situacao_setor', 'V1005', .x),
@@ -357,44 +307,25 @@ save_tracts_2010 <- function(br_df){
   
   
   AT <- collect(AT)
-  
-  # whenever there is "X" the value gets convert to NA
-  message('to numeric')
-  vars <- names(AT)
-  vars <- vars[grep('V', vars)]
-  AT <- mutate(AT, across(all_of(vars), ~ as.numeric(.x)))
-  
-  
-  # data.table::setDT(AT2)
-  # df_na <- AT2[rowSums(is.na(AT2)) > 0]
-  #
-  # AT |>
-  #   filter(code_tract== "521020805000055") |>
-  #   select(code_tract, pessoa02_V001, pessoa02_V052,
-  #          pessoa02_V095, pessoa02_V117,
-  #          pessoa01_V002, pessoa01_V040) |>
-  #   collect()
-  #
-  # a |>
-  #   filter(code_tract== "521020805000055") |>
-  #   select(code_tract, pessoa02_V001, pessoa02_V052,
-  #          pessoa02_V095, pessoa02_V117,
-  #          pessoa01_V002, pessoa01_V040) |>
-  #   collect()
-  
-  # reoderder rows
-  data.table::setDT(AT)
-  AT <- AT[order(code_muni, code_tract)]
-  
-  data.table::setindex(AT, NULL)
-  data.table::setDF(AT)
-  
-  message('saving')
-  # save
-  dest_file <- paste0('2010_tracts_', tbl, '.parquet')
 
-  
+  # V cols vêm como character (fread colClasses) com vírgula decimal IBGE.
+  # Loop set é preferível a mutate(across) — evita cópia da tabela inteira.
+  message("to numeric")
+  setDT(AT)
+  for(v in grep("V", names(AT), value = TRUE))
+    set(AT, j = v, value = as.numeric(gsub(",", ".", AT[[v]], fixed = TRUE)))
+
+  AT <- AT[order(code_muni, code_tract)]
+  setindex(AT, NULL)
+  setDF(AT)
+
+  # convenção v0.6.0: todas code_* viram numeric (R double / Arrow float64).
+  AT <- code_cols_to_numeric(AT)
+
+  message("saving")
+  dir.create("./data/tracts/2010/", recursive = TRUE, showWarnings = FALSE)
+  dest_file <- paste0("./data/tracts/2010/2010_tracts_", tbl, ".parquet")
   write_censobr_parquet(AT, dest_file)
-  
-  return(dest_file)
+
+  dest_file
 }

@@ -17,8 +17,41 @@ All rules live in [.claude/rules/](.claude/rules/) and are obligatory:
 - **[plan-first-workflow.md](.claude/rules/plan-first-workflow.md)** — non-trivial tasks require a written plan saved to disk before any code is written.
 - **[minimal-changes.md](.claude/rules/minimal-changes.md)** — surgical edits only; protected-function list; no opportunistic refactor.
 - **[test-first-protocol.md](.claude/rules/test-first-protocol.md)** — validate on 1 small UF (RR/AC) before processing 27 states; investigation loop until "absolute certainty".
+- **[memory-discipline.md](.claude/rules/memory-discipline.md)** — `data.table` default + `furrr` workers ≤ 4 + `gc/rm` discipline + `arrow` fallback. User-style code (procedural, no `.dot_prefixed` helpers, narrative comments). `censobr` naming convention (`code_*`, `name_*`, V cols preserved with theme prefix). Triggered by 2026-05-03 OOM crash.
 
 If a hook blocks an action, stop and explain to the user what would need to change — do not try to work around it.
+
+## Memory & style discipline (sempre em contexto)
+
+Regra completa em [.claude/rules/memory-discipline.md](.claude/rules/memory-discipline.md). Os bullets abaixo são críticos para **todo** código R deste projeto e ficam em contexto a cada turno para evitar drift. Triggered pelo crash OOM de 2026-05-03 e por feedback explícito do usuário sobre estilo verboso/defensivo do AI.
+
+**Memória:**
+- `data.table` é o motor primário (`fread`, `[, := ]`, `merge`, `set`, `rbindlist`). `dplyr` só sobre `arrow::open_dataset()` lazy ou tabelas pequenas.
+- `furrr::future_map` com `workers ≤ 4`. `coress = 1` no `_targets.R` é independente (rate-limit FTP).
+- `gc(verbose = FALSE)` após `rbindlist`/`merge` grandes; `rm(lst); gc()` antes de `return()` em funções que alocam listas. Em listas-fila, `lst[[1]] <- NULL` na cabeça libera memória ao consumir.
+- `arrow` só como fallback (parquet por grupo + `open_dataset` no fim) se data.table+gc não basta. Não preempção.
+- `fread(colClasses="character", na.strings=c("X","",",","."))` é o leitor padrão de CSV IBGE.
+
+**Estilo (copiar do usuário, não do AI default):** projetos canônicos: TD-IPEA, Edu-Performance, EJA — paths em memória `reference_user_style_projects`.
+- Procedural, linear. Objetos nomeados em sequência. Reatribuição em passos (`df <- df %>% ...` repetido) em vez de mega-pipe.
+- Sem helpers `.dot_prefixed` para uso único — inlinar. Função apenas para matemática reutilizável. No `targets`: 1 função pública por target, corpo procedural.
+- Comentários narrativos curtos (1–3 linhas) sobre o **porquê analítico**. Sem multi-parágrafo de design, sem stacktrace de investigação, sem doc de bug (vai no commit/plano).
+- Mensagens curtas: `message(uf)`. Sem `sprintf` em `message()`.
+- Confiar em funções idempotentes: `make.unique`, `%in%` (cobre NA), `as.numeric`. Sem `if(any(duplicated(...)))` antes de `make.unique`. Sem `tryCatch` por hábito.
+- `=` alinhado em listas de pares. Pipe `|>` em código novo. `library()` em bloco no topo.
+
+**Nomeação `censobr` (canônica — zero invenção):**
+- IDs: `code_tract|muni|state|region|district|subdistrict|neighborhood|weighting|meso|micro|metro`. Sigla: `abbrev_state`. Nomes humanos: `name_*` análogos.
+- V cols IBGE preservadas com prefixo de tema: `pessoa01_V002`, `domicilio02_V135`, `entorno05_V242`, `Basico_V1005`.
+- Convenção v0.6.0: `code_*` viram `numeric` (Arrow `float64`) via `code_cols_to_numeric()`.
+
+**Anti-padrões (NÃO repetir — visíveis em `R/census_tracts_2022.R`, em fila de refactor):**
+- `mutate_all(funs(...))`, `purrr::reduce(.x, dplyr::left_join)`, `purrr::map(~str_detect)` em colunas character.
+- Helpers `.dot_prefixed` para encapsular uso único (`.match_files_*`, `.recode_*`).
+- `vapply(..., FUN.VALUE = ...)` defensivo onde `sapply` serviria; `if(length(...)==0) stop(...)` antes de operação que já erraria.
+- Blocos de 5+ linhas comentadas explicando design alternativo testado.
+
+**Aplicação:** integralmente em código novo. Em código existente que funciona e não é hot path, deixar — refactor de estilo é trabalho separado, não oportunista. Ao tocar uma função existente, aplicar na função/bloco tocado, não no arquivo inteiro (`minimal-changes.md`).
 
 ## What this repo is
 
@@ -68,7 +101,7 @@ The pipeline uses [`targets`](https://books.ropensci.org/targets/) + `tarchetype
 - `targets::tar_read(<name>)` — read a materialized target (e.g. `tar_read(raw_tracts_paths_2010)`)
 - `targets::tar_meta(fields = warnings, complete_only = TRUE)` — inspect warnings/errors after a failed run
 
-`coress <- 1` is hardcoded at the top of `_targets.R` to avoid rate-limiting from the IBGE FTP — do not bump it without testing FTP behavior. Inside individual cleaning functions (e.g. `clean_tracts_2010`), `furrr::future_map` parallelizes by state with its own worker count (currently 8).
+`coress <- 1` is hardcoded at the top of `_targets.R` to avoid rate-limiting from the IBGE FTP — do not bump it without testing FTP behavior. Inside individual cleaning functions (e.g. `clean_tracts_2010`), `furrr::future_map` parallelizes by state with its own worker count (`workers = 4` per the [memory-discipline rule](.claude/rules/memory-discipline.md); was 8, caused OOM in 2026-05-03).
 
 Outputs land in `./data/` (gitignored); raw downloads in `./data_raw/` (gitignored); `crew` worker logs in `./logs/crew_workers/`.
 
@@ -102,7 +135,7 @@ Centralized helpers used throughout the pipeline. Reuse before reinventing:
 
 - **2010 tracts RS**: `RS_20231030.zip` is explicitly deleted in favor of `RS_20241211.zip` (see `census_tracts_2010.R:48`).
 - **`ÿ` character corruption** in some 2010 xls files (e.g. `Pessoa07_CE.xls`, `Entorno05_RO.xls`) — currently stripped to empty string.
-- **Goiás 2010 `Pessoa02`** has malformed `V01`–`V09` column names (vs. `V001`–`V009` elsewhere); the fix is currently commented out in `clean_tracts_2010` — re-enable if processing GO Pessoa data (issue #68).
+- **Goiás 2010 `Pessoa02`** (and SP) has malformed `V01`–`V09` column names (vs. `V001`–`V009` elsewhere); fix is wired in `read_single_file_tract_2010` (issue #68 — covers GO, SP1, SP2).
 - `code_weighting` for 2010 tracts is joined in from `geobr::read_census_tract(year = 2010)`.
 
 ## Open data bugs (must fix in this pipeline)
