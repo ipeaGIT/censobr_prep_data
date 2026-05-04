@@ -45,19 +45,23 @@ v0.6.0: **todas as `code_*` são `numeric`** (R double / Arrow float64), via `co
 v0.5.0: variações tipo "Paraiba"/"Paraíba" (com/sem acento), `name_region` com prefixo "Região ".
 v0.6.0: padronização canonical via `add_state_info()` + `add_region_info()`.
 
-### Pessoa: +86 colunas V171-V255 (MELHORIA)
+### Pessoa: shift SP corrigido — 86 cols espúrias eliminadas (BUG IBGE corrigido por nós)
 
 v0.5.0: 2008 cols.
-v0.6.0: 2094 cols (+86 cols `pessoa02_V171` até `pessoa02_V255`).
+v0.6.0: **2008 cols** — paridade total com a spec phgfsouza.
 
-**Causa:** IBGE publica Pessoa02 com layouts diferentes por UF — 26 UFs publicam V001-V170; SP1 e SP2 publicam V086-V255. v0.5.0 cortava a publicação de SP em V170 (perdia ~85 vars). v0.6.0 preserva todo o universo via `rbindlist(fill = TRUE)`, com NA estrutural onde a UF não publica.
+**Causa raiz:** IBGE publicou os arquivos `Pessoa02_SP1.xls` e `Pessoa02_SP2.xls` com numeração shiftada em +85 vs dicionário oficial: o que outras UFs chamam de `V001` (Homens 5+) aparece em SP como `V086`; `V170` aparece como `V255`. Análogo ao erro de GO V01-V99 que IBGE corrigiu em 15/09/2025, mas o de SP IBGE não corrigiu.
 
-**Padrão NA esperado:**
-- `pessoa02_V001`–`pessoa02_V085` em SP: 100% NA (SP não publica).
-- `pessoa02_V171`–`pessoa02_V255` em UFs ≠ SP: 100% NA (não publicam).
-- `pessoa02_V086`–`pessoa02_V170` em todas as UFs: ~2-3% NA (intersecção comum).
+**Confirmação empírica:** identidade aritmética `Pessoa01_V_i ≡ Pessoa02_V_i + Pessoa02_V_(i+85)` (Total = Homens + Mulheres) testada exaustivamente em 85 categorias × 3 UFs (AC controle, SP1, SP2). 84/85 batem com diferença absoluta zero em SP1 e SP2 quando se usa `V_(i+85) + V_(i+170)` no lugar de `V_i + V_(i+85)`. Relatório completo em [`relatorio_pessoa02_sp_shift.md`](relatorio_pessoa02_sp_shift.md).
 
-Esse é o estado real dos dados IBGE. Issue #70 do `censobr` reportou como "truncamento em V170" — improcedente.
+**Fix em v0.6.0:** `read_single_file_tract_2010` aplica shift `V_n → V_(n-85)` para todo `n ≥ 86` quando `uf ∈ {SP1, SP2}` e arquivo é `PESSOA02_*`. Resultado:
+- Parquet final tem 171 cols `pessoa02_V*` (V001-V170 + V1005), idêntico em todas as 28 publicações UF.
+- `pessoa02_V001` em SP agora tem 2.09% NA (alinhado com outras UFs ~0.6-4.5%, antes do fix era 100%).
+- Identidade aritmética `pessoa02_V001 + pessoa02_V086 = pessoa01_V001` bate em SP setor a setor (validado em 10/10 spot-checks).
+
+**Comparação com v0.5.0:** v0.5.0 publicou Pessoa02 SP com os mesmos nomes shiftados, e as variáveis V086-V255 ficaram com NA em todas as UFs ≠ SP (porque essas UFs não tinham essas cols na publicação cru). v0.6.0 desfaz o shift no read e produz schema unificado canônico.
+
+Issue #70 do `censobr` reportou como "truncamento em V170" — improcedente. As 85 vars que pareciam "extras em SP" eram simplesmente o range V086-V170 do dicionário publicado sob nomes errados (V171-V255).
 
 ## Bugs conhecidos a corrigir antes de shippar v0.6.0
 

@@ -136,6 +136,22 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
       names(temp_df) <- sub("^V(\\d{2})$", "V0\\1", names(temp_df))
     }
 
+    # Pessoa02_SP1.xls e Pessoa02_SP2.xls têm numeração shiftada em +85 vs
+    # dicionário oficial: V086 corresponde a V001, V255 a V170, e assim por
+    # diante. Confirmado por 84 das 85 identidades aritméticas Pessoa01_V_i =
+    # Pessoa02_homens_i + Pessoa02_mulheres_i (relatório em
+    # references/relatorio_pessoa02_sp_shift.md). Crosswalk: V_n -> V_(n-85)
+    # para todo n >= 86.
+    if(uf %in% c("SP1", "SP2") && grepl("^PESSOA02_", basename(f), ignore.case = TRUE)){
+      v_old <- grep("^V\\d+$", names(temp_df), value = TRUE)
+      v_num <- as.integer(sub("V", "", v_old))
+      to_shift <- v_num >= 86
+      if(any(to_shift)){
+        v_new <- ifelse(to_shift, sprintf("V%03d", v_num - 85), v_old)
+        data.table::setnames(temp_df, v_old, v_new)
+      }
+    }
+
     # dropar colunas 100% NA
     setDT(temp_df)
     all_NA <- names(temp_df)[sapply(temp_df, function(x) all(is.na(x)))]
