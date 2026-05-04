@@ -22,33 +22,34 @@ download_tract_2010 <- function(year, overwrite = FALSE){ # year = 2010
   
   # get file names
   listed_files <- list_folders(ftp)
-  
+
   # keep zip files
   listed_files <- listed_files[listed_files %like% ".zip$"]
-  
-  # Removing existing files from the list of files to download (if overwrite == F)
-  if(overwrite == FALSE){
-    existing_files = listed_files %in% list.files(dest_dir)
-    listed_files <- listed_files[!existing_files]
+
+  # IBGE as vezes re-publica zip de uma UF com data nova (RS_20231030 ->
+  # RS_20241211; GO_20231030 -> GO_20250915). Manter so o mais recente por UF.
+  listed_files <- pick_latest_per_uf(listed_files)
+
+  # Baixar so o que nao esta em disco (smart-skip via download_file_censobr
+  # confere size+mtime via HEAD pra deteccao de re-publicacao com mesmo nome).
+  if(overwrite){
+    files_to_download <- listed_files
+  } else {
+    files_to_download <- listed_files[!listed_files %in% list.files(dest_dir)]
   }
-  
-  if(length(listed_files) == 0){
-    return()
+
+  if(length(files_to_download) > 0){
+    download_file_censobr(file_url = paste0(ftp, files_to_download),
+                          dest_dir = dest_dir)
   }
-  
-  # Download zipped files
-  all_files_url <- paste0(ftp, listed_files)
-  
-  downloaded_files <- download_file_censobr(
-    file_url = all_files_url, 
-    dest_dir = dest_dir
-    )
-  
-  # delete file from RS RS_20231030.zip, which was replaced with RS_20241211.zip
-  if (year == 2010 ) {
-    file_to_remove <- downloaded_files[ downloaded_files %like% "RS_20231030.zip"]
-    file.remove(file_to_remove)
-  }
+
+  # Apos o download (ou skip), remover do disco zips locais com versao obsoleta
+  # cuja UF tem versao mais recente. Ex: se RS_20231030.zip e RS_20241211.zip
+  # estao ambos em dest_dir, mantem so o mais recente.
+  local_zips    <- list.files(dest_dir, pattern = "\\.zip$", full.names = TRUE)
+  keep_zips     <- pick_latest_per_uf(local_zips)
+  obsolete_zips <- setdiff(local_zips, keep_zips)
+  if(length(obsolete_zips)) file.remove(obsolete_zips)
   
   # unzip files
   
@@ -130,7 +131,11 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
     # Algumas UFs vêm com nomes duplicados (DOMICILIO02_RO 107 dups; ENTORNO02_RO).
     names(temp_df) <- make.unique(names(temp_df), sep = "_")
 
-    # Issue #68: Pessoa02 de GO e SP tem V01..V09 em vez de V001..V009.
+    # Issue #68: Pessoa02 de GO tinha V01..V09 (zeros omitidos). IBGE corrigiu
+    # em 2025-09-15 (Atualizacoes_20250915.txt do FTP); GO_20250915.zip ja vem
+    # com V001-V099. Fix mantido como salvaguarda defensiva caso IBGE re-shipe
+    # versao com bug. SP1/SP2 nunca tiveram V01-V09 nos arquivos atuais (tem
+    # outro problema, shift +85 - tratado abaixo, ver relatorio_pessoa02_sp_shift.md).
     uf <- str_remove_all(str_extract(basename(f), "_[A-Z]{2}[0-9]?\\."), "[_.]")
     if(uf %in% c("GO", "SP1", "SP2")){
       names(temp_df) <- sub("^V(\\d{2})$", "V0\\1", names(temp_df))

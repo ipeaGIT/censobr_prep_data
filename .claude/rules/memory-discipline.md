@@ -15,13 +15,32 @@ paths:
 
 Em 2026-05-03 o pipeline crashou OOM em `clean_tract_table_2010` (branch ENTORNO) com `furrr` workers=8 + `dplyr::left_join` chain + `purrr::map(~str_detect)` sobre colunas character. Causa estrutural: o pipeline carrega 27 UFs × até 5 sub-tabelas IBGE × até 242 colunas character em paralelo, sem `gc()`, sem `rm()` de listas intermediárias, multiplicando cópias via dplyr. Esta regra codifica os padrões que evitam reincidência, junto com o estilo de código e a convenção de nomeação `censobr`.
 
+## 0. Fonte de dados: XLS é primário, CSV é fallback documentado
+
+Os zips IBGE de Resultados do Censo trazem o mesmo conteúdo em **dois formatos**: XLS e CSV. **Use XLS por default.**
+
+CSVs do IBGE têm múltiplos quirks que comprometem a integridade dos dados:
+- **Notação científica em códigos longos** — `Cod_setor` de 15 dígitos vira `2,3001E+14` (perda de precisão; observado em ENTORNO_CE/MG/SP/etc.).
+- **Separador inconsistente** — alguns arquivos usam `;`, outros `,` (observado em PESSOA02_AC, PESSOA*_SP2, RESPONSAVEL*_SP2).
+- **Aspas duplicadas malformadas** — `""V001""` em vez de `"V001"`, fazendo `fread` ler tudo como uma coluna só.
+- **Headers com cells sem nome** — `readxl` gera `...242` automático que vaza no merge.
+
+XLS preserva precisão numérica, formato de cabeçalho íntegro e estrutura uniforme. `readxl::read_excel(col_types = "text")` é o padrão; "X" do IBGE (marcador de censura) fica como texto literal e vira NA estruturado quando convertido a `as.numeric` no save.
+
+**Quando usar CSV** (apenas como fallback explícito):
+- (a) IBGE não disponibilizou XLS para essa edição/tabela.
+- (b) Verificou-se que XLS daquele arquivo está corrompido E o CSV correspondente está íntegro.
+
+Em qualquer fallback CSV, **documentar explicitamente** num comentário no código com link para o issue ou relatório, e justificar por que XLS não serve.
+
 ## 1. Memória
 
 ### Motor primário: `data.table`
 
 - Default para qualquer manipulação de dados não-trivial: `fread`, `[ , := ]`, `merge.data.table`, `set`, `setorder`, `rbindlist`.
 - `dplyr` aceito apenas para: operações lazy sobre `arrow::open_dataset()`; tabelas pequenas (lookup, dicionários); blocos curtos de rename/select que já estão escritos e funcionam.
-- Não trocar `data.table::fread(colClasses="character", na.strings=c("X","",",","."))` por `arrow::read_csv_arrow` para CSV IBGE — `fread` tem controle de tipos melhor para esse formato.
+- Para CSV (fallback raro — ver seção 0), `data.table::fread(colClasses="character", na.strings=c("X","",",","."))` é preferível a `arrow::read_csv_arrow` (controle de tipos melhor).
+- Para XLS (default — ver seção 0), `readxl::read_excel(col_types = "text")` preserva "X" como literal e Cod_setor full precision.
 
 ### Joins
 

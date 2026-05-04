@@ -711,6 +711,34 @@ UF_SIGLAS <- c("RO","AC","AM","RR","PA","AP","TO",
                "MS","MT","GO","DF")
 
 
+# Quando IBGE re-publica zips de UF com nova data (RS_20231030.zip foi
+# substituido por RS_20241211.zip; GO_20231030.zip por GO_20250915.zip per
+# Atualizacoes_20250915.txt), manter so a versao mais recente por UF.
+# Aplicavel tanto a listagem do FTP (input pra download) quanto a arquivos
+# locais (delete de versoes obsoletas).
+# Zips fora do pattern <UF>_YYYYMMDD.zip (ex.: Documentacao_*.zip) saem intactos.
+pick_latest_per_uf <- function(zip_files){
+  ufs_known <- c(UF_SIGLAS, "SP_Capital", "SP_Exceto_Capital")
+  pat <- sprintf("^(%s)_(\\d{8})\\.zip$", paste(ufs_known, collapse = "|"))
+  m <- regmatches(basename(zip_files), regexec(pat, basename(zip_files)))
+
+  is_uf_zip <- vapply(m, length, integer(1)) > 0
+  uf_zips   <- zip_files[is_uf_zip]
+  other     <- zip_files[!is_uf_zip]
+
+  if(length(uf_zips) == 0) return(zip_files)
+
+  uf   <- vapply(m[is_uf_zip], `[`, character(1), 2)
+  date <- as.integer(vapply(m[is_uf_zip], `[`, character(1), 3))
+
+  dt <- data.table::data.table(file = uf_zips, uf = uf, date = date)
+  data.table::setorder(dt, uf, -date)
+  latest <- dt[, .SD[1L], by = uf]$file
+
+  c(other, latest)
+}
+
+
 # detect table from file name
 detect_2010_table_name <- function(file_path){
   

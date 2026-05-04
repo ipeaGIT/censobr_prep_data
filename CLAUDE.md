@@ -25,12 +25,16 @@ If a hook blocks an action, stop and explain to the user what would need to chan
 
 Regra completa em [.claude/rules/memory-discipline.md](.claude/rules/memory-discipline.md). Os bullets abaixo são críticos para **todo** código R deste projeto e ficam em contexto a cada turno para evitar drift. Triggered pelo crash OOM de 2026-05-03 e por feedback explícito do usuário sobre estilo verboso/defensivo do AI.
 
+**Fonte de dados (XLS é primário):**
+- IBGE distribui o mesmo conteúdo em XLS e CSV. **Use XLS por default** — `readxl::read_excel(col_types = "text")`.
+- CSVs IBGE têm quirks documentados: notação científica em `Cod_setor`, separadores inconsistentes, aspas duplicadas malformadas, headers `...XXX` espúrios. Detalhes na regra.
+- CSV é fallback explícito apenas quando: XLS indisponível OU XLS corrompido com CSV íntegro. Documentar no código com motivo.
+
 **Memória:**
 - `data.table` é o motor primário (`fread`, `[, := ]`, `merge`, `set`, `rbindlist`). `dplyr` só sobre `arrow::open_dataset()` lazy ou tabelas pequenas.
 - `furrr::future_map` com `workers ≤ 4`. `coress = 1` no `_targets.R` é independente (rate-limit FTP).
 - `gc(verbose = FALSE)` após `rbindlist`/`merge` grandes; `rm(lst); gc()` antes de `return()` em funções que alocam listas. Em listas-fila, `lst[[1]] <- NULL` na cabeça libera memória ao consumir.
 - `arrow` só como fallback (parquet por grupo + `open_dataset` no fim) se data.table+gc não basta. Não preempção.
-- `fread(colClasses="character", na.strings=c("X","",",","."))` é o leitor padrão de CSV IBGE.
 
 **Estilo (copiar do usuário, não do AI default):** projetos canônicos: TD-IPEA, Edu-Performance, EJA — paths em memória `reference_user_style_projects`.
 - Procedural, linear. Objetos nomeados em sequência. Reatribuição em passos (`df <- df %>% ...` repetido) em vez de mega-pipe.
