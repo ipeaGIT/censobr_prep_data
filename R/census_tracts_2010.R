@@ -53,7 +53,7 @@ download_tract_2010 <- function(year, overwrite = FALSE){ # year = 2010
   
   # unzip files
   
-  # 66666666666666666   pass unzipped files to a temp dir so we don't overload local disk
+  # pass unzipped files to a temp dir so we don't overload local disk
   
   temp_zip_dir <- tempdir()
   
@@ -103,8 +103,7 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
     
     ### replace "X" with NA
     ### delete a couple of tracts with ÿ caracter
-    
-    # 6666
+
     # f = "./data_raw/tracts/2010/CE_20171016/CE/Base informaçoes setores2010 universo CE/CSV/Pessoa07_CE.csv"
     # f = "./data_raw/tracts/2010/CE_20231030/Base informaçoes setores2010 universo CE/CSV/Basico_CE.csv"
     # f = './data_raw/tracts/2010/CE_20231030/Base informaçoes setores2010 universo CE/EXCEL/Basico_CE.xls'
@@ -272,49 +271,35 @@ save_tracts_2010 <- function(br_df){
   if(tbl == 'BASICO'){
     
     options(scipen = 999)
-    
-    # AT <- dplyr::mutate(AT, Cod_subdistrito = as.numeric(Cod_subdistrito))
-    # AT <- dplyr::mutate(AT, Cod_subdistrito = (format(as.character(Cod_subdistrito), scientific = FALSE)))
-    # # head(AT) |> collect()
-    
+
     AT <- dplyr::rename(AT,
-                        code_tract = code_tract,
-                        # code_muni = Cod_municipio,
-                        name_muni = Nome_do_municipio,
-                        # abbrev_state = Cod_UF ,
-                        # name_state = Nome_da_UF ,
-                        code_state = code_state,
-                        # code_region = `Cod_Grandes Regiões`,
-                        # name_region = Nome_Grande_Regiao,
-                        code_meso = Cod_meso,
-                        name_meso = Nome_da_meso,
-                        code_micro = Cod_micro,
-                        name_micro = Nome_da_micro,
-                        code_metro = Cod_RM,
-                        name_metro = Nome_da_RM,
+                        name_muni         = Nome_do_municipio,
+                        code_meso         = Cod_meso,
+                        name_meso         = Nome_da_meso,
+                        code_micro        = Cod_micro,
+                        name_micro        = Nome_da_micro,
+                        code_metro        = Cod_RM,
+                        name_metro        = Nome_da_RM,
                         name_neighborhood = Nome_do_bairro,
                         code_neighborhood = Cod_bairro,
-                        code_district = Cod_distrito,
-                        name_district = Nome_do_distrito,
-                        code_subdistrict = Cod_subdistrito,
-                        name_subdistrict = Nome_do_subdistrito,
-                        Basico_V1005 = Situacao_setor
-                        # , tipo_setor = Tipo_setor
-    )
+                        code_district     = Cod_distrito,
+                        name_district     = Nome_do_distrito,
+                        code_subdistrict  = Cod_subdistrito,
+                        name_subdistrict  = Nome_do_subdistrito,
+                        Basico_V1005      = Situacao_setor)
     
     # cols IBGE de UF/região foram substituídas por add_state_info/add_region_info.
     AT <- AT |>
       select(-any_of(c("Cod_Grandes Regiões", "Nome_Grande_Regiao",
                        "Cod_UF", "Nome_da_UF", "Cod_municipio")))
     
-    ## reoder columns
-    AT <- relocate(AT, c(code_tract, code_weighting, code_muni, name_muni, code_state,
-                         abbrev_state, name_state, code_region, name_region,
-                         code_meso, name_meso, code_micro, name_micro,
-                         code_metro, name_metro, name_neighborhood,
-                         code_neighborhood, name_neighborhood,
-                         code_neighborhood, Basico_V1005 # , tipo_setor
-    ))
+    AT <- relocate(AT, code_tract, code_weighting, code_muni, name_muni,
+                       code_state, abbrev_state, name_state,
+                       code_region, name_region,
+                       code_meso, name_meso, code_micro, name_micro,
+                       code_metro, name_metro,
+                       name_neighborhood, code_neighborhood,
+                       Basico_V1005)
   }
   
   
@@ -324,11 +309,7 @@ save_tracts_2010 <- function(br_df){
   
   if(tbl == 'ENTORNO'){ AT <- select(AT, -c(entorno05_V1005)) }
   
-  AT <- rename_with(AT,
-                    ~gsub('Situacao_setor', 'V1005', .x),
-                    .cols = all_of(old_names)
-  )
-  # AT <-  dplyr::rename_with(AT, ~gsub("Situacao_setor", "V1005", .x))
+  AT <- rename_with(AT, ~gsub("Situacao_setor", "V1005", .x), .cols = all_of(old_names))
   
   
   AT <- collect(AT)
