@@ -123,6 +123,10 @@ clean_tracts_2010 <- function(raw_file_paths, tbl_name){
     # de colunas íntegros — independente dos quirks de CSV-export do IBGE.
     temp_df <- as.data.table(readxl::read_excel(f, col_types = "text"))
 
+    # readxl gera nomes auto "...242" para cells de header sem nome — descartar.
+    spurious <- grep("^\\.{3}\\d+$", names(temp_df), value = TRUE)
+    if(length(spurious)) temp_df[, (spurious) := NULL]
+
     # Algumas UFs vêm com nomes duplicados (DOMICILIO02_RO 107 dups; ENTORNO02_RO).
     names(temp_df) <- make.unique(names(temp_df), sep = "_")
 
@@ -321,6 +325,9 @@ save_tracts_2010 <- function(br_df){
 
   # convenção v0.6.0: todas code_* viram numeric (R double / Arrow float64).
   AT <- code_cols_to_numeric(AT)
+
+  # table_name é metadata interna do pipeline — não vai pro output.
+  AT$table_name <- NULL
 
   message("saving")
   dir.create("./data/tracts/2010/", recursive = TRUE, showWarnings = FALSE)
