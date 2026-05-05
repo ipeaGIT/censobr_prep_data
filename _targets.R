@@ -86,7 +86,33 @@ targets::tar_source('./R')
 list(
   
   # 01. microdata 1960 ---------------------------------------------------------------
-  
+
+  # input: amostra compilada pelo Rogerio em censoBR_aux_Dados (fora do FTP IBGE).
+  tar_target(name = aux_microdata_1960_paths,
+             command = c(
+               "../censoBR_aux_Dados/1960/microdados da amostra/Censo.1960.brasil.domicilios.amostraCompilada.censobr.fst",
+               "../censoBR_aux_Dados/1960/microdados da amostra/Censo.1960.brasil.pessoas.amostraCompilada.censobr.parquet"
+             ),
+             format = "file"
+             ),
+
+  tar_target(name = dataset_names_microdata_1960,
+             command = c("households", "population")
+             ),
+
+  # branch per dataset: read fst/parquet, rename v* -> V*, attach dataset sentinel
+  tar_target(name = clean_microdata_table_1960,
+             command = clean_microdata_1960(aux_microdata_1960_paths, dataset_names_microdata_1960),
+             pattern = map(dataset_names_microdata_1960)
+             ),
+
+  # branch per dataset: cast code_* to numeric (v0.6.0 convention) + save parquet
+  tar_target(name = output_microdata_1960,
+             command = save_microdata_1960(clean_microdata_table_1960),
+             pattern = map(clean_microdata_table_1960),
+             format = "file"
+             ),
+
   # 02. microdata 1970 ---------------------------------------------------------------
   
   
