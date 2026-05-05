@@ -100,6 +100,34 @@ list(
   
   # 07. census tracts 2000 ---------------------------------------------------------------
 
+  # download (also unzips). Returns paths to all extracted XLSs.
+  tar_target(name = raw_tracts_paths_2000,
+             command = download_tract_2000(),
+             format = 'file'
+             ),
+
+  tar_target(name = table_names_tracts_2000,
+             command = c("Basico",
+                         "Domicilio",
+                         "Morador",
+                         "Responsavel",
+                         "Pessoa",
+                         "Instrucao")
+             ),
+
+  # branch per theme: read XLS per UF, recode, prefix V cols, join, attach geo
+  tar_target(name = clean_tract_table_2000,
+             command = clean_tracts_2000(raw_tracts_paths_2000, table_names_tracts_2000),
+             pattern = map(table_names_tracts_2000)
+             ),
+
+  # branch per theme: cast code_* to numeric (v0.6.0 convention) + save parquet
+  tar_target(name = output_tracts_paths_2000,
+             command = save_tracts_2000(clean_tract_table_2000),
+             pattern = map(clean_tract_table_2000),
+             format = 'file'
+             ),
+
   # 08. census tracts 2010 ---------------------------------------------------------------
   
   # # year input
