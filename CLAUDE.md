@@ -50,7 +50,7 @@ Duas regras complementares: [`memory-discipline.md`](.claude/rules/memory-discip
 - V cols IBGE preservadas com prefixo de tema: `pessoa01_V002`, `domicilio02_V135`, `entorno05_V242`, `Basico_V1005`.
 - Convenção v0.6.0: `code_*` viram `numeric` (Arrow `float64`) via `code_cols_to_numeric()`.
 
-**Anti-padrões (NÃO repetir — visíveis em `R/census_tracts_2022.R`, em fila de refactor):**
+**Anti-padrões (NÃO repetir — visíveis no diff antigo de `R/census_tracts_2010.R` e na versão AI-style anterior de `R/census_tracts_2022.R` — ambos refatorados em 2026-05-04):**
 - `mutate_all(funs(...))`, `purrr::reduce(.x, dplyr::left_join)`, `purrr::map(~str_detect)` em colunas character.
 - Helpers `.dot_prefixed` para encapsular uso único (`.match_files_*`, `.recode_*`).
 - `vapply(..., FUN.VALUE = ...)` defensivo onde `sapply` serviria; `if(length(...)==0) stop(...)` antes de operação que já erraria.
@@ -128,6 +128,8 @@ Centralized helpers used throughout the pipeline. Reuse before reinventing:
 - `dicionario_municipality` / `dicionario_state` + `rename_cols_censobr()` — fuzzy column-name standardization across heterogeneous IBGE exports.
 - `write_censobr_parquet()` — the canonical writer (zstd level 22). Always use this instead of `arrow::write_parquet` directly.
 - `UF_SIGLAS` — 27-state vector. Note that 2010 SP comes in two pieces: `SP_Capital` and `SP_Exceto_Capital`.
+- `pick_latest_per_uf()` — when IBGE re-publishes a UF zip with new date suffix (e.g., `RS_20231030.zip` → `RS_20241211.zip`, `GO_20231030.zip` → `GO_20250915.zip`), keeps only the most recent. Used in `download_tract_2010` for FTP listing + local cleanup.
+- `get_areas_ponderacao_2010()` — crosswalk `code_tract → code_weighting` (2010 weighting areas) from IBGE's `Documentacao_microdados_2010.zip`. Replaces the old `geobr` source.
 
 `R/add_geography_cols.R` adds `code_muni`, `code_state`, `name_state`, `code_region`, etc. Pay attention to its year-specific source column map (1980→`V2`, 1991→`V1101`, 2000→`V0103`/`V0102`, 2010→`V0002`/`V0001`, 2022→`CD_MUN`). When adding a new year, extend the `case_when` blocks there.
 
@@ -141,7 +143,7 @@ Centralized helpers used throughout the pipeline. Reuse before reinventing:
 - **2010 tracts RS**: `RS_20231030.zip` is explicitly deleted in favor of `RS_20241211.zip` (see `census_tracts_2010.R:48`).
 - **`ÿ` character corruption** in some 2010 xls files (e.g. `Pessoa07_CE.xls`, `Entorno05_RO.xls`) — currently stripped to empty string.
 - **Goiás 2010 `Pessoa02`** (and SP) has malformed `V01`–`V09` column names (vs. `V001`–`V009` elsewhere); fix is wired in `read_single_file_tract_2010` (issue #68 — covers GO, SP1, SP2).
-- `code_weighting` for 2010 tracts is joined in from `geobr::read_census_tract(year = 2010)`.
+- `code_weighting` for 2010 tracts is read from the IBGE source file `Composição das Áreas de Ponderação.txt` inside `Documentacao_microdados_2010.zip` via `get_areas_ponderacao_2010()` in `R/support_fun.R`. (Was previously joined from `geobr::read_census_tract(year = 2010)`, but `geobr ≥1.10` no longer exposes that column.)
 
 ## Open data bugs (must fix in this pipeline)
 

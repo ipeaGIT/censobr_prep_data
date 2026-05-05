@@ -70,7 +70,7 @@ Os 3 projetos de referência (paths em memória `reference_user_style_projects`)
 
 ### Anti-padrões observados (NÃO REPETIR)
 
-Visíveis em `R/census_tracts_2022.R` (script atual a ser refatorado em plano futuro) e no diff antigo de `R/census_tracts_2010.R`:
+Foram visíveis no diff antigo de `R/census_tracts_2010.R` e na versão AI-style anterior de `R/census_tracts_2022.R` (ambos refatorados em 2026-05-04). Mantemos a lista aqui como **galeria de anti-padrões a evitar** em código novo:
 
 - ❌ Helpers `.dot_prefixed` para uso único (`.match_files_2022`, `.recode_basico_2022`).
 - ❌ `vapply(..., FUN.VALUE = logical(1))` defensivo para checks que poderiam ser `sapply` ou inline.
