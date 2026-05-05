@@ -1,0 +1,90 @@
+dataset,ftp_col,v_code,evidence,notes
+households,UF,V2,B+C+v050,IDENTIFIER (convencao IBGE/Pedro Souza)
+households,MUNIC,V5,B+C+v050,IDENTIFIER
+households,CONTADOM,V601,B+C+v050,IDENTIFIER
+households,SITUACAO,V198,A+B+C+v050,Situação do Domicílio
+households,ESPECIE,V201,A+B+C+v050,Espécie do Domicílio
+households,TIPO,V202,A+B+C+v050,Tipo do domicílio
+households,PAREDES,V203,A+B+C+v050,Paredes
+households,PISO,V204,A+B+C+v050,Piso
+households,COBERTUR,V205,A+B+C+v050,Cobertura
+households,AGUA,V206,A+B+C+v050,Abastecimento de água
+households,SANESCOA,V207,A+B+C+v050,Escoadouro
+households,SANUSO,V208,B+C+v050,"MAPPED_WITH_CAVEAT: A doc silenciou; B='Uso', C=208 'Uso', v050 tem V208"
+households,CONDOCUP,V209,A+B+C+v050,Condição de Ocupação
+households,ALUGUEL,V602,B+C+v050,"RENAME: A doc IBGE 2025 numera como V210, mas B+C+v050 = V602; descrição idêntica 'Aluguel ou Prestação Mensal'. Manter V602 (paridade v050)."
+households,TPRESID,V211,A+B+C+v050,Tempo de Residência
+households,COMODOS,V212,A+B+C+v050,Total de Cômodos
+households,COMODOR,V213,A+B+C+v050,Cômodos servindo de dormitório
+households,FOGAO,V214,A+B+C+v050,Para cozinhar usa
+households,COMBCOZI,V215,A+B+C+v050,Combustível usado na cozinha
+households,TELEFONE,V216,A+B+C+v050,Telefone
+households,ILUMINA,V217,A+B+C+v050,Iluminação Elétrica
+households,RADIO,V218,A+B+C+v050,Rádio
+households,GELADEIR,V219,A+B+C+v050,Geladeira
+households,TV,V220,A+B+C+v050,Televisão
+households,AUTOMOVE,V221,A+B+C+v050,Automóvel
+households,PESOD,V603,B+C+v050,MAPPED_WITH_CAVEAT: A doc silenciou; B+C+v050 todos têm V603 (Peso de Domicílio)
+population,UF,V2,B+C+v050,IDENTIFIER
+population,MUNIC,V5,B+C+v050,IDENTIFIER
+population,CONTADOM,V601,B+C+v050,IDENTIFIER
+population,SEXO,V501,A+B+v050,Sexo (C nao tem)
+population,PARENDOM,V503,A+B+v050,Relação c/chefe domicílio (C nao tem)
+population,PARENFAM,V504,A+B+v050,Relação com o chefe (C nao tem)
+population,FAMILIA,V505,A+B+v050,Família a que pertence (C nao tem)
+population,RELIGIAO,V508,A+B+v050,Religião (C nao tem)
+population,COR,V509,A+B+v050,Cor (C nao tem)
+population,MAEVIVA,V510,A+B+v050,Tem mãe viva (C nao tem)
+population,MINACION,V511,A+B+v050,Nacionalidade (C nao tem)
+population,MIUFNASC,V512,A+B+v050,UF de Nascimento (C nao tem)
+population,MINASCMU,V513,A+B+C+v050,Nasceu neste município
+population,MIMUMOZN,V514,A+B+C+v050,Neste município morou
+population,MIANTEZN,V515,A+B+C+v050,Município anterior morava
+population,MITEMPUF,V516,A+B+C+v050,Tempo Residência UF Atual
+population,MITEMPMU,V517,A+B+C+v050,Tempo residência Município atual
+population,MIUFANT,V518,A+B+C+v050,UF do Município anterior
+population,EDSABELE,V519,A+B+C+v050,Sabe ler e escrever
+population,EDSERIE,V520,A+B+C+v050,Série que freqüenta
+population,EDGRAU,V521,A+B+C+v050,Grau que freqüenta
+population,EDCURSNS,V522,A+B+C+v050,Curso não seriado
+population,EDULSERI,V523,A+B+C+v050,Última série concluída
+population,EDULGRAU,V524,A+B+C+v050,Grau da última série concluída
+population,EDCURSTP,V525,A+B+C+v050,Tipo do último curso concluído
+population,ESTCONJ,V526,A+B+C+v050,Estado conjugal
+population,TMUNTRAB,V527,A+B+C+v050,UF do Município trabalha/estuda
+population,TRUL12M,V528,A+B+C+v050,Trabalhou nos últimos 12 meses
+population,TSITDESO,V529,A+B+C+v050,Ocupação atual
+population,TOCUPACA,V530,A+B+C+v050,Ocupação/cargo últimos 12 meses
+population,TATIVIDA,V532,A+B+C+v050,Finalidade/Ramo do negócio
+population,TPOSICAO,V533,A+B+C+v050,Posição no estabelecimento
+population,TPREVID,V534,A+B+C+v050,Contribuição previdência
+population,THORTRAB,V535,A+B+C+v050,Horas trabalhadas ocup. principal
+population,THORTRTO,V536,A+B+C+v050,Horas trabalhadas em todas as ocupações
+population,RPRINDIN,V607,B+C+v050,"RENAME: A=V537; B='Rendimento bruto ocup. principal', C='Rendimento médio mensal bruto recebido em dinheiro na ocupação principal'. Mesma var."
+population,RPRINPRM,V608,B+C+v050,"RENAME: A=V538; B='Rendimento prod/merc ocup princ', C='Rendimento médio mensal bruto auferido pelo recebimento de produtos ou mercadorias na ocupação principal'."
+population,ROUTROCU,V609,B+C+v050,"RENAME: A=V539; B='Renda dinh bruto outras ocupação', C='Renda em dinheiro bruto outras ocupações'."
+population,TQTSALAR,V540,A+B+C+v050,Quantos salários recebe
+population,TSITULSN,V541,A+B+C+v050,Na última semana estava
+population,TOUTRAOC,V542,A+B+C+v050,Ocupação não habitual ex
+population,TOUTRAAT,V544,A+B+C+v050,Finalidade estab. não habitual
+population,TOUTRAPO,V545,A+B+C+v050,Posição no estab. não habitual
+population,RAPOSENT,V610,B+C+v050,RENAME: A=V546; B='Rendimento recebido aposentado'.
+population,RALUGUEL,V611,B+C+v050,RENAME: A=V547; B='Rendimento recebido aluguel'.
+population,RDOACOES,V612,B+C+v050,RENAME: A=V548; B='Rendimento recebido de doações'.
+population,RCAPITAL,V613,B+C+v050,RENAME: A=V549; B='Rendimento recebido outros ren.'.
+population,FLNAVIVH,V550,A+B+C+v050,Filhos tidos nascidos vivos (homens)
+population,FLNAVIVM,V551,A+B+C+v050,Filhas tidas nascidas vivas (mulheres)
+population,FLNAMORH,V552,A+B+C+v050,Filhos tidos nascidos mortos
+population,FLNAMORM,V553,A+B+C+v050,Filhas tidas nascidas mortas
+population,FLVIVOSH,V554,A+B+C+v050,Filhos vivos na data da pesquisa
+population,FLVIVOSM,V555,A+B+C+v050,Filhas vivas na data da pesquisa
+population,FLUVIMES,V556,A+B+C+v050,Mês nascimento últ filho nasc vivo
+population,FLUVIANO,V557,A+B+C+v050,Ano nasc últ filho nasc vivo
+population,IDADEMES,V605,B+C+v050,RENAME: A=V560; B+C='Idade em meses' (score 1.00 similaridade)
+population,IDADEANO,V606,B+C+v050,RENAME: A=V561; B+C='Idade em anos' (score 1.00)
+population,FLUVIDAD,V570,A+B+C+v050,Idade do último filho
+population,PESOP,V604,B+C+v050,RENAME: A=V586 'Peso Pessoa'; B+C='Peso da Pessoa' (V604)
+population,RPRINCIF,V680,A+B+v050,Classe rend bruto ocup. principal (C nao tem)
+population,RTOTALF,V681,A+B+v050,Classe de renda total (C nao tem)
+population,RTOTOCUF,V682,A+B+v050,Classe rend bruto todas as ocupações (C nao tem)
+population,(derived),V598,DERIVED_FROM_V198,"DERIVED: V598 = ifelse(V198 %in% c(1,3), 0L, 1L). 0=urbano, 1=rural. Recoding binario de V198. Cross-tab v0.5.0 confirma 100% match em sample."
