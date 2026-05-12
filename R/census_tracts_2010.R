@@ -75,9 +75,10 @@ download_tract_2010 <- function(year, overwrite = FALSE){ # year = 2010
   # duplicados (formato malformado). XLS preserva tudo. readxl + col_types="text"
   # mantém "X" como texto literal — issues #71+#73 não regridem porque o all-NA-drop
   # não dispara em strings "X" (só em colunas genuinamente NA).
+  # xlsx? casa .xls e .xlsx — RS publicou Domicilio01_RS.xlsx (único fora do padrão).
   raw_file_paths <- list.files(
     path = dest_dir,
-    pattern = "\\.xls$",
+    pattern = "\\.xlsx?$",
     ignore.case = TRUE,
     all.files = T,
     full.names = T,
